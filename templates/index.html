@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset=str>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片上传 + 后端分析</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #aaa;
+            border-radius: 16px;
+            padding: 30px;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: #fafafa;
+        }
+        .upload-area:hover {
+            border-color: #667eea;
+            background-color: #f0f0ff;
+        }
+        .upload-area.dragover {
+            background-color: #e0e7ff;
+            border-color: #4f46e5;
+        }
+        #fileInput {
+            display: none;
+        }
+        .preview {
+            margin: 20px 0;
+        }
+        .preview img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 40px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #4338ca;
+            transform: scale(1.02);
+        }
+        .result {
+            background: #f3f4f6;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 20px;
+            text-align: left;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: #dc2626;
+            background: #fee2e2;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #ddd;
+            border-top-color: #4f46e5;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>📸 图片上传分析</h1>
+    <div class="upload-area" id="dropArea">
+        <p>📤 点击或拖拽图片到此处</p>
+        <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <div class="preview" id="preview"></div>
+    <button id="uploadBtn" disabled>上传并分析</button>
+    <div id="result" class="result" style="display: none;"></div>
+</div>
+
+<script>
+    const dropArea = document.getElementById('dropArea');
+    const fileInput = document.getElementById('fileInput');
+    const previewDiv = document.getElementById('preview');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const resultDiv = document.getElementById('result');
+
+    let selectedFile = null;
+
+    // 触发文件选择
+    dropArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', handleFileSelect);
+
+    // 拖拽上传
+    dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', () => {
+        dropArea.classList.remove('dragover');
+    });
+    dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFile(files[0]);
+        }
+    });
+
+    function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (file) handleFile(file);
+    }
+
+    function handleFile(file) {
+        if (!file.type.startsWith('image/')) {
+            alert('请选择图片文件');
+            return;
+        }
+        selectedFile = file;
+        // 显示预览
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            previewDiv.innerHTML = `<img src="${ev.target.result}" alt="预览图">`;
+        };
+        reader.readAsDataURL(file);
+        uploadBtn.disabled = false;
+        resultDiv.style.display = 'none';
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+
+        // 显示加载状态
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '上传中... <span class="loading"></span>';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '处理中...';
+        resultDiv.classList.remove('error');
+
+        const formData = new FormData();
+        formData.append('image', selectedFile);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                resultDiv.innerHTML = `
+                    ✅ 分析结果<br>
+                    📐 尺寸: ${data.width} x ${data.height} 像素<br>
+                    🏷️ 格式: ${data.format}<br>
+                    💾 大小: ${data.file_size_kb} KB (${data.file_size_bytes} 字节)
+                    🧩Prompt: ${data.Prompt || '无'}<br>
+                    🧩Negative Prompt: ${data['Negative Prompt'] || '无'}
+                `;
+                resultDiv.classList.remove('error');
+            } else {
+                throw new Error(data.error || '上传失败');
+            }
+        } catch (err) {
+            resultDiv.innerHTML = `❌ 错误: ${err.message}`;
+            resultDiv.classList.add('error');
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '上传并分析';
+        }
+    });
+</script>
+</body>
+</html>
